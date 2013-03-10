@@ -23,6 +23,7 @@
  * create or replace the alpha component by a chromakey
  */
 
+
 #include <string.h>
 
 #include "libavutil/pixfmt.h"
@@ -114,7 +115,7 @@ static int config_output(AVFilterLink *outlink)
 }
 
 static void draw_frame(AVFilterContext *ctx,
-                       AVFilterBufferRef *main_buf)
+                       AVFrame *main_buf)
 {
     AlphaChromakeyContext *keyer = ctx->priv;
     
@@ -147,7 +148,7 @@ static void draw_frame(AVFilterContext *ctx,
     }
 
     // do the keying
-    int h = main_buf->video->h;
+    int h = main_buf->height;
     int x, y;
     long sum_u=0, sum_v=0, count=0;
     for(y = 0; y < h; y++)  
@@ -176,7 +177,7 @@ static void draw_frame(AVFilterContext *ctx,
     }
 }
 
-static int filter_frame(AVFilterLink *inlink, AVFilterBufferRef *buf)
+static int filter_frame(AVFilterLink *inlink, AVFrame *buf)
 {
     AVFilterContext *ctx = inlink->dst;
     AlphaChromakeyContext *keyer = ctx->priv;
@@ -185,7 +186,7 @@ static int filter_frame(AVFilterLink *inlink, AVFilterBufferRef *buf)
     ff_bufqueue_add(ctx, queue, buf);
 
     while (1) {
-        AVFilterBufferRef *main_buf;
+        AVFrame *main_buf;
 
         if (!ff_bufqueue_peek(&keyer->queue_main, 0)) break;
 
