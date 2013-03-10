@@ -42,7 +42,6 @@ enum { Y, U, V, A };
 typedef struct {
     const AVClass* class;
     int frame_requested;
-    int is_packed_rgb;
     uint8_t rgba_map[4];
     struct FFBufQueue queue_main;
     int u, v, min, max;
@@ -69,7 +68,6 @@ static const char *shorthand[] = { "u", "v", "min","max","alpha", NULL };
 
 static av_cold int init(AVFilterContext *ctx, const char *args)
 {
-    
     AlphaChromakeyContext *context = ctx->priv;
 
     context->class = &alphachromakey_class;
@@ -87,8 +85,7 @@ static av_cold void uninit(AVFilterContext *ctx)
 static int query_formats(AVFilterContext *ctx)
 {
     static const enum AVPixelFormat main_fmts[] = {
-        AV_PIX_FMT_YUVA444P, AV_PIX_FMT_YUVA422P, AV_PIX_FMT_YUVA420P,
-        AV_PIX_FMT_RGBA, AV_PIX_FMT_BGRA, AV_PIX_FMT_ARGB, AV_PIX_FMT_ABGR,
+        AV_PIX_FMT_YUVA422P, AV_PIX_FMT_YUVA420P,
         AV_PIX_FMT_NONE
     };
     AVFilterFormats *main_formats = ff_make_format_list(main_fmts);
@@ -100,8 +97,6 @@ static int query_formats(AVFilterContext *ctx)
 static int config_input_main(AVFilterLink *inlink)
 {
     AlphaChromakeyContext *keyer = inlink->dst->priv;
-    keyer->is_packed_rgb =
-        ff_fill_rgba_map(keyer->rgba_map, inlink->format) >= 0;
     return 0;
 }
 
@@ -118,108 +113,66 @@ static int config_output(AVFilterLink *outlink)
     return 0;
 }
 
-static int clamp (int x, int a, int b)
-{
-    return (x < a ? a :  (x>b ? b : x) );
-}
-
 static void draw_frame(AVFilterContext *ctx,
                        AVFilterBufferRef *main_buf)
 {
-
-
     AlphaChromakeyContext *keyer = ctx->priv;
-
     
-    FILE* file=fopen("uv.txt","r");
-    if(file){
-    char buffer[255];
-    fgets(buffer,255,file);
+    // re-read parameters from external file uv.txt if existent
+    // this allows for realtime parameter adjustment.
+    FILE* file=fopen("alphachromakey.params","r");
+    if(file)
+    {
+        char buffer[255];
+        fgets(buffer,255,file);
         av_opt_set_from_string(keyer, buffer, shorthand, "=", ":");
-    fclose(file);
+        fclose(file);
     }
 
+	// evaluate alpha expression
     double alpha=1;
-    if(keyer->alpha_expr){
-            AVFilterLink *inlink = ctx->inputs[0];
+    if(keyer->alpha_expr)
+    {
+        AVFilterLink *inlink = ctx->inputs[0];
             
-            double vars[]={TS2D(main_buf->pts) * av_q2d(inlink->time_base)};
+        double vars[]={TS2D(main_buf->pts) * av_q2d(inlink->time_base)};
         int ret=av_expr_parse_and_eval(&alpha, keyer->alpha_expr,
                            var_names, vars,
                            NULL, NULL, NULL, NULL, NULL, 0, ctx);
-        if(ret<0){
-        av_log(ctx, AV_LOG_ERROR, "Bad alpha expression.\n");        
-        return AVERROR(EINVAL);
+        if(ret<0)
+        {
+            av_log(ctx, AV_LOG_ERROR, "Bad alpha expression.\n");        
+            return AVERROR(EINVAL);
         }
     }
+
+    // do the keying
     int h = main_buf->video->h;
-// TODO
     int x, y;
-    if (keyer->is_packed_rgb) {
-        int x, y;
-        uint8_t *pin, *pout;
-        for (y = 0; y < h; y++) {
-            // pin = alpha_buf->data[0] + y * alpha_buf->linesize[0];
-            pin  = main_buf->data[0] + y * main_buf->linesize[0] + keyer->rgba_map[Y];
-            pout = main_buf->data[0] + y * main_buf->linesize[0] + keyer->rgba_map[A];
-            for (x = 0; x < main_buf->video->w; x++) {
-                *pout = *pin;
-                pin += 4;
-                pout += 4;
-            }
+    long sum_u=0, sum_v=0, count=0;
+    for(y = 0; y < h; y++)  
+    {
+        int yfact = (main_buf->format==AV_PIX_FMT_YUVA422P ? y : y/2);
+        uint8_t* in_u  = main_buf->data[U] + yfact  * main_buf->linesize[U];
+        uint8_t* in_v  = main_buf->data[V] + yfact  * main_buf->linesize[V];
+        uint8_t* pout  = main_buf->data[A] + y * main_buf->linesize[A];
+        for (int x = 0; x < main_buf->linesize[A]; x++) {
+            // radius threshold with feather, double precision
+            double du=in_u[x/2]/256.0 - keyer->u/256.0, dv=in_v[x/2]/256.0 - keyer->v/256.0;
+            double r=sqrt(du*du+dv*dv);
+            double tola=keyer->min/256.0;
+            double tolb=keyer->max/256.0;
+            if (r<tola)      r=0;
+            else if (r<tolb) r=(r-tola)/(tolb-tola);
+            else             r=1;
+            r*=alpha;
+            pout[x]=(int)(r*255);
+            
+            sum_u+=in_u[x/2]; 
+            sum_v+=in_v[x/2];
+            count++;
         }
-    } else {
-        long sum_u=0, sum_v=0, count=0;
-        for (y = 0; y < h; y++) {
-            int yfact = (main_buf->format==AV_PIX_FMT_YUVA422P ? y : y/2);
-            uint8_t* in_u  = main_buf->data[U] + yfact  * main_buf->linesize[U];
-            uint8_t* in_v  = main_buf->data[V] + yfact  * main_buf->linesize[V];
-            uint8_t* pout  = main_buf->data[A] + y * main_buf->linesize[A];
-            for (int x = 0; x < main_buf->linesize[A]; x++) {
-                
-                /*
-                // variant 1: abs ramp with offset and scale
-                int du=abs(in_u[x/2] - keyer->u)*keyer->uw/16;
-                int dv=abs(in_v[x/2] - keyer->v)*keyer->vw/16;
-                int r=du+dv-keyer->offset;
-                pout[x] = (uint8_t) clamp(r,0,255);
-                */
-                
-                // variant 2: radius threshold with feather, double precision
-                double du=in_u[x/2]/256.0 - keyer->u/256.0, dv=in_v[x/2]/256.0 - keyer->v/256.0;
-                double r=sqrt(du*du+dv*dv);
-                double tola=keyer->min/256.0;
-                double tolb=keyer->max/256.0;
-                if (r<tola)      r=0;
-                else if (r<tolb) r=(r-tola)/(tolb-tola);
-                else             r=1;
-                r*=alpha;
-                pout[x]=(int)(r*255);
-                
-                // variant 3: squared radius threshold with feather, integer
-     /*           int du=in_u[x/2] - (int)keyer->u, dv=in_v[x/2] - (int)keyer->v;
-                int r2=sqrt(du*du+dv*dv);
-                 int tola2=keyer->uw;
-                int tolb2=keyer->vw;
- 
-                if      (r2<tola2) r2=0;
-                else if (r2<tolb2) r2=(r2-tola2)*256 / (tolb2-tola2);
-                else               r2=255;
-                pout[x]=r2;                */
-                
-                sum_u+=in_u[x/2]; 
-                sum_v+=in_v[x/2];
-                count++;                
-                
-                /* if(x % 4 ==0){
-                    in_u += 1;
-                    in_v += 1;
-                }
-                in_y += 1;*/
-//                pout += 1;
-            }
-        }
-        printf("u:%ld v:%ld\n",sum_u/count, sum_v/count);
+        printf("chromakey mean u:%ld v:%ld\n",sum_u/count, sum_v/count);
     }
 }
 
@@ -241,7 +194,6 @@ static int filter_frame(AVFilterLink *inlink, AVFilterBufferRef *buf)
         keyer->frame_requested = 0;
         draw_frame(ctx, main_buf);
         ff_filter_frame(ctx->outputs[0], main_buf);
-        // avfilter_unref_buffer(alpha_buf);
     }
     return 0;
 }
