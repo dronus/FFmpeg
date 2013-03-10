@@ -33,6 +33,12 @@
 #include "formats.h"
 #include "internal.h"
 #include "video.h"
+#include "libavutil/eval.h"
+
+
+#define TS2D(ts) ((ts) == AV_NOPTS_VALUE ? NAN : (double)(ts))
+
+
 
 
 
@@ -44,8 +50,15 @@ typedef struct {
     int is_packed_rgb;
     uint8_t rgba_map[4];
     struct FFBufQueue queue_main;
-    int u, uw, v, vw, offset;
+    int u, uw, v, vw;
+    char* alpha_expr;
 } AlphaChromakeyContext;
+
+static const char *const var_names[] = {
+	"t",
+	NULL
+};
+
 
 #define FLAGS AV_OPT_FLAG_VIDEO_PARAM|AV_OPT_FLAG_FILTERING_PARAM
 static const AVOption alphachromakey_options[] = {
@@ -53,13 +66,12 @@ static const AVOption alphachromakey_options[] = {
     {"uw", "set the u width", offsetof(AlphaChromakeyContext,uw), AV_OPT_TYPE_INT, {.i64=0}, 0, 255, FLAGS },
     {"v", "set the v center", offsetof(AlphaChromakeyContext,v ), AV_OPT_TYPE_INT, {.i64=0}, 0, 255, FLAGS },
     {"vw", "set the v width", offsetof(AlphaChromakeyContext,vw), AV_OPT_TYPE_INT, {.i64=0}, 0, 255, FLAGS },
-    {"offset", "set the uv offset", offsetof(AlphaChromakeyContext,offset ), AV_OPT_TYPE_INT, {.i64=0}, -1024, 1024, FLAGS },    
-//    {"y", "set the y center", offsetof(AlphaChromakeyContext,y ), AV_OPT_TYPE_INT, {.i64=0}, 0, 255, FLAGS },
+    {"a", "set alpha expression", offsetof(AlphaChromakeyContext,alpha_expr), AV_OPT_TYPE_STRING, {.str = NULL}, 0, 0, FLAGS },
     {NULL},
 };
 AVFILTER_DEFINE_CLASS(alphachromakey);
 
-static const char *shorthand[] = { "u", "uw", "v","vw","offset", NULL };
+static const char *shorthand[] = { "u", "uw", "v","vw","alpha", NULL };
 
 static av_cold int init(AVFilterContext *ctx, const char *args)
 {
@@ -133,6 +145,19 @@ static void draw_frame(AVFilterContext *ctx,
 	fclose(file);
     }
 
+    double alpha=1;
+    if(keyer->alpha_expr){
+            AVFilterLink *inlink = ctx->inputs[0];
+            
+            double vars[]={TS2D(main_buf->pts) * av_q2d(inlink->time_base)};
+	    int ret=av_expr_parse_and_eval(&alpha, keyer->alpha_expr,
+		                   var_names, vars,
+		                   NULL, NULL, NULL, NULL, NULL, 0, ctx);
+	    if(ret<0){
+		av_log(ctx, AV_LOG_ERROR, "Bad alpha expression.\n");    	
+		return AVERROR(EINVAL);
+	    }
+    }
     int h = main_buf->video->h;
 // TODO
     int x, y;
@@ -173,7 +198,8 @@ static void draw_frame(AVFilterContext *ctx,
             	double tolb=keyer->vw/256.0;
             	if (r<tola)      r=0;
             	else if (r<tolb) r=(r-tola)/(tolb-tola);
-            	else             r=1;            	
+            	else             r=1;
+            	r*=alpha;
             	pout[x]=(int)(r*255);
             	
             	// variant 3: squared radius threshold with feather, integer
