@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012 Steven Robertson
+ * Copyright (c) 2013 Paul Geisler
  *
  * This file is part of FFmpeg.
  *
@@ -20,7 +20,7 @@
 
 /**
  * @file
- * copy an alpha component from another video's luma
+ * create or replace the alpha component by a chromakey
  */
 
 #include <string.h>
@@ -35,12 +35,7 @@
 #include "video.h"
 #include "libavutil/eval.h"
 
-
 #define TS2D(ts) ((ts) == AV_NOPTS_VALUE ? NAN : (double)(ts))
-
-
-
-
 
 enum { Y, U, V, A };
 
@@ -50,7 +45,7 @@ typedef struct {
     int is_packed_rgb;
     uint8_t rgba_map[4];
     struct FFBufQueue queue_main;
-    int u, uw, v, vw;
+    int u, v, min, max;
     char* alpha_expr;
 } AlphaChromakeyContext;
 
@@ -59,19 +54,18 @@ static const char *const var_names[] = {
 	NULL
 };
 
-
 #define FLAGS AV_OPT_FLAG_VIDEO_PARAM|AV_OPT_FLAG_FILTERING_PARAM
 static const AVOption alphachromakey_options[] = {
-    {"u", "set the u center", offsetof(AlphaChromakeyContext,u ), AV_OPT_TYPE_INT, {.i64=0}, 0, 255, FLAGS },
-    {"uw", "set the u width", offsetof(AlphaChromakeyContext,uw), AV_OPT_TYPE_INT, {.i64=0}, 0, 255, FLAGS },
-    {"v", "set the v center", offsetof(AlphaChromakeyContext,v ), AV_OPT_TYPE_INT, {.i64=0}, 0, 255, FLAGS },
-    {"vw", "set the v width", offsetof(AlphaChromakeyContext,vw), AV_OPT_TYPE_INT, {.i64=0}, 0, 255, FLAGS },
-    {"a", "set alpha expression", offsetof(AlphaChromakeyContext,alpha_expr), AV_OPT_TYPE_STRING, {.str = NULL}, 0, 0, FLAGS },
+    {"u", "set the u center"                                , offsetof(AlphaChromakeyContext,u         ), AV_OPT_TYPE_INT   , {.i64=0}     , 0, 255, FLAGS },
+    {"v", "set the v center"                                , offsetof(AlphaChromakeyContext,v         ), AV_OPT_TYPE_INT   , {.i64=0}     , 0, 255, FLAGS },
+    {"min", "set the minimal tolerance the keying sets in"  , offsetof(AlphaChromakeyContext,min       ), AV_OPT_TYPE_INT   , {.i64=0}     , 0, 255, FLAGS },
+    {"max", "set the maximal tolerance the keying completes", offsetof(AlphaChromakeyContext,max       ), AV_OPT_TYPE_INT   , {.i64=0}     , 0, 255, FLAGS },
+    {"alpha", "set alpha expression"                        , offsetof(AlphaChromakeyContext,alpha_expr), AV_OPT_TYPE_STRING, {.str = NULL}, 0,   0, FLAGS },
     {NULL},
 };
 AVFILTER_DEFINE_CLASS(alphachromakey);
 
-static const char *shorthand[] = { "u", "uw", "v","vw","alpha", NULL };
+static const char *shorthand[] = { "u", "v", "min","max","alpha", NULL };
 
 static av_cold int init(AVFilterContext *ctx, const char *args)
 {
@@ -194,8 +188,8 @@ static void draw_frame(AVFilterContext *ctx,
             	// variant 2: radius threshold with feather, double precision
             	double du=in_u[x/2]/256.0 - keyer->u/256.0, dv=in_v[x/2]/256.0 - keyer->v/256.0;
             	double r=sqrt(du*du+dv*dv);
-            	double tola=keyer->uw/256.0;
-            	double tolb=keyer->vw/256.0;
+            	double tola=keyer->min/256.0;
+            	double tolb=keyer->max/256.0;
             	if (r<tola)      r=0;
             	else if (r<tolb) r=(r-tola)/(tolb-tola);
             	else             r=1;
