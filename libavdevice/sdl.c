@@ -92,7 +92,7 @@ static int sdl_write_header(AVFormatContext *s)
         goto fail;
     }
 
-    if (SDL_Init(SDL_INIT_VIDEO) != 0) {
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_NOPARACHUTE) != 0) {
         av_log(s, AV_LOG_ERROR, "Unable to initialize SDL: %s\n", SDL_GetError());
         ret = AVERROR(EINVAL);
         goto fail;
@@ -153,7 +153,7 @@ static int sdl_write_header(AVFormatContext *s)
 
     SDL_WM_SetCaption(sdl->window_title, sdl->icon_title);
     sdl->surface = SDL_SetVideoMode(sdl->window_width, sdl->window_height,
-                                    24, flags);
+                                    0, flags);
     if (!sdl->surface) {
         av_log(s, AV_LOG_ERROR, "Unable to set video mode: %s\n", SDL_GetError());
         ret = AVERROR(EINVAL);
@@ -169,6 +169,16 @@ static int sdl_write_header(AVFormatContext *s)
         ret = AVERROR(EINVAL);
         goto fail;
     }
+
+  printf("Created %dx%dx%d %s %s overlay\n",sdl->overlay->w,sdl->overlay->h,sdl->overlay->planes,
+           sdl->overlay->hw_overlay?"hardware":"software",
+           sdl->overlay->format==SDL_YV12_OVERLAY?"YV12":
+           sdl->overlay->format==SDL_IYUV_OVERLAY?"IYUV":
+           sdl->overlay->format==SDL_YUY2_OVERLAY?"YUY2":
+           sdl->overlay->format==SDL_UYVY_OVERLAY?"UYVY":
+           sdl->overlay->format==SDL_YVYU_OVERLAY?"YVYU":
+           "Unknown");
+
 
     av_log(s, AV_LOG_VERBOSE, "w:%d h:%d fmt:%s sar:%d/%d -> w:%d h:%d\n",
            encctx->width, encctx->height, av_get_pix_fmt_name(encctx->pix_fmt), sar.num, sar.den,
@@ -190,17 +200,18 @@ static int sdl_write_packet(AVFormatContext *s, AVPacket *pkt)
 
     avpicture_fill(&pict, pkt->data, encctx->pix_fmt, encctx->width, encctx->height);
 
-    SDL_FillRect(sdl->surface, &sdl->surface->clip_rect,
-                 SDL_MapRGB(sdl->surface->format, 0, 0, 0));
+    //SDL_FillRect(sdl->surface, &sdl->surface->clip_rect,
+    //             SDL_MapRGB(sdl->surface->format, 0, 0, 0));
     SDL_LockYUVOverlay(sdl->overlay);
-    for (i = 0; i < 3; i++) {
-        sdl->overlay->pixels [i] = pict.data    [i];
-        sdl->overlay->pitches[i] = pict.linesize[i];
+    for (i = 0; i < 1; i++) {
+//        sdl->overlay->pixels [i] = pict.data    [i];
+        memcpy(sdl->overlay->pixels[i], pict.data[i], sdl->overlay->pitches[i]*sdl->overlay_height);
+//        sdl->overlay->pitches[i] = pict.linesize[i];
     }
-    SDL_DisplayYUVOverlay(sdl->overlay, &rect);
     SDL_UnlockYUVOverlay(sdl->overlay);
+    SDL_DisplayYUVOverlay(sdl->overlay, &rect);
 
-    SDL_UpdateRect(sdl->surface, rect.x, rect.y, rect.w, rect.h);
+    //SDL_UpdateRect(sdl->surface, rect.x, rect.y, rect.w, rect.h);
 
     return 0;
 }
