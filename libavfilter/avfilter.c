@@ -24,6 +24,7 @@
 #include "libavutil/channel_layout.h"
 #include "libavutil/common.h"
 #include "libavutil/imgutils.h"
+#include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 #include "libavutil/rational.h"
 #include "libavutil/samplefmt.h"
@@ -329,8 +330,7 @@ int ff_request_frame(AVFilterLink *link)
     if (ret == AVERROR_EOF && link->partial_buf) {
         AVFrame *pbuf = link->partial_buf;
         link->partial_buf = NULL;
-        ff_filter_frame_framed(link, pbuf);
-        return 0;
+        ret = ff_filter_frame_framed(link, pbuf);
     }
     if (ret == AVERROR_EOF)
         link->closed = 1;
@@ -557,6 +557,8 @@ void avfilter_free(AVFilterContext *filter)
 
     if (filter->filter->uninit)
         filter->filter->uninit(filter);
+    if (filter->filter->shorthand)
+        av_opt_free(filter->priv);
 
     for (i = 0; i < filter->nb_inputs; i++) {
         if ((link = filter->inputs[i])) {
@@ -601,6 +603,17 @@ int avfilter_init_filter(AVFilterContext *filter, const char *args, void *opaque
 {
     int ret=0;
 
+    if (filter->filter->shorthand) {
+        av_assert0(filter->priv);
+        av_assert0(filter->filter->priv_class);
+        *(const AVClass **)filter->priv = filter->filter->priv_class;
+        av_opt_set_defaults(filter->priv);
+        ret = av_opt_set_from_string(filter->priv, args,
+                                     filter->filter->shorthand, "=", ":");
+        if (ret < 0)
+            return ret;
+        args = NULL;
+    }
     if (filter->filter->init_opaque)
         ret = filter->filter->init_opaque(filter, args, opaque);
     else if (filter->filter->init)
@@ -626,7 +639,6 @@ static int default_filter_frame(AVFilterLink *link, AVFrame *frame)
 static int ff_filter_frame_framed(AVFilterLink *link, AVFrame *frame)
 {
     int (*filter_frame)(AVFilterLink *, AVFrame *);
-    AVFilterPad *src = link->srcpad;
     AVFilterPad *dst = link->dstpad;
     AVFrame *out;
     int ret;
@@ -698,7 +710,7 @@ static int ff_filter_frame_needs_framing(AVFilterLink *link, AVFrame *frame)
 {
     int insamples = frame->nb_samples, inpos = 0, nb_samples;
     AVFrame *pbuf = link->partial_buf;
-    int nb_channels = frame->channels;
+    int nb_channels = av_frame_get_channels(frame);
     int ret = 0;
 
     /* Handle framing (min_samples, max_samples) */
@@ -747,7 +759,7 @@ int ff_filter_frame(AVFilterLink *link, AVFrame *frame)
         }
     } else {
         av_assert1(frame->format                == link->format);
-        av_assert1(frame->channels              == link->channels);
+        av_assert1(av_frame_get_channels(frame) == link->channels);
         av_assert1(frame->channel_layout        == link->channel_layout);
         av_assert1(frame->sample_rate           == link->sample_rate);
     }

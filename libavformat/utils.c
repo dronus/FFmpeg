@@ -99,6 +99,12 @@ static int64_t wrap_timestamp(AVStream *st, int64_t timestamp)
     return timestamp;
 }
 
+#define MAKE_ACCESSORS(str, name, type, field) \
+    type av_##name##_get_##field(const str *s) { return s->field; } \
+    void av_##name##_set_##field(str *s, type v) { s->field = v; }
+
+MAKE_ACCESSORS(AVStream, stream, AVRational, r_frame_rate)
+
 /** head of registered input format linked list */
 static AVInputFormat *first_iformat = NULL;
 /** head of registered output format linked list */
@@ -245,6 +251,9 @@ AVInputFormat *av_find_input_format(const char *short_name)
     return NULL;
 }
 
+/* an arbitrarily chosen "sane" max packet size -- 50M */
+#define SANE_CHUNK_SIZE (50000000)
+
 int ffio_limit(AVIOContext *s, int size)
 {
     if(s->maxsize>=0){
@@ -265,43 +274,68 @@ int ffio_limit(AVIOContext *s, int size)
     return size;
 }
 
-int av_get_packet(AVIOContext *s, AVPacket *pkt, int size)
+/*
+ * Read the data in sane-sized chunks and append to pkt.
+ * Return the number of bytes read or an error.
+ */
+static int append_packet_chunked(AVIOContext *s, AVPacket *pkt, int size)
 {
+    int orig_pos       = pkt->pos; // av_grow_packet might reset pos
+    int orig_size      = pkt->size;
     int ret;
-    int orig_size = size;
-    size= ffio_limit(s, size);
 
-    ret= av_new_packet(pkt, size);
+    do {
+        int prev_size = pkt->size;
+        int read_size;
 
-    if(ret<0)
-        return ret;
+        /*
+         * When the caller requests a lot of data, limit it to the amount left
+         * in file or SANE_CHUNK_SIZE when it is not known
+         */
+        read_size = size;
+        if (read_size > SANE_CHUNK_SIZE/10) {
+            read_size = ffio_limit(s, read_size);
+            // If filesize/maxsize is unknown, limit to SANE_CHUNK_SIZE
+            if (s->maxsize < 0)
+                read_size = FFMIN(read_size, SANE_CHUNK_SIZE);
+        }
 
-    pkt->pos= avio_tell(s);
+        ret = av_grow_packet(pkt, read_size);
+        if (ret < 0)
+            break;
 
-    ret= avio_read(s, pkt->data, size);
-    if(ret<=0)
-        av_free_packet(pkt);
-    else
-        av_shrink_packet(pkt, ret);
-    if (pkt->size < orig_size)
+        ret = avio_read(s, pkt->data + prev_size, read_size);
+        if (ret != read_size) {
+            av_shrink_packet(pkt, prev_size + FFMAX(ret, 0));
+            break;
+        }
+
+        size -= read_size;
+    } while (size > 0);
+    if (size > 0)
         pkt->flags |= AV_PKT_FLAG_CORRUPT;
 
-    return ret;
+    pkt->pos = orig_pos;
+    if (!pkt->size)
+        av_free_packet(pkt);
+    return pkt->size > orig_size ? pkt->size - orig_size : ret;
+}
+
+int av_get_packet(AVIOContext *s, AVPacket *pkt, int size)
+{
+    av_init_packet(pkt);
+    pkt->data = NULL;
+    pkt->size = 0;
+    pkt->pos  = avio_tell(s);
+
+    return append_packet_chunked(s, pkt, size);
 }
 
 int av_append_packet(AVIOContext *s, AVPacket *pkt, int size)
 {
-    int ret;
-    int old_size;
     if (!pkt->size)
         return av_get_packet(s, pkt, size);
-    old_size = pkt->size;
-    ret = av_grow_packet(pkt, size);
-    if (ret < 0)
-        return ret;
-    ret = avio_read(s, pkt->data + old_size, size);
-    av_shrink_packet(pkt, old_size + FFMAX(ret, 0));
-    return ret;
+    return append_packet_chunked(s, pkt, size);
 }
 
 
@@ -737,6 +771,8 @@ int ff_read_packet(AVFormatContext *s, AVPacket *pkt)
         if (pktl) {
             *pkt = pktl->pkt;
             st = s->streams[pkt->stream_index];
+            if (s->raw_packet_buffer_remaining_size <= 0)
+                probe_codec(s, st, NULL);
             if(st->request_probe <= 0){
                 s->raw_packet_buffer = pktl->next;
                 s->raw_packet_buffer_remaining_size += pkt->size;
@@ -2103,6 +2139,8 @@ int avformat_seek_file(AVFormatContext *s, int stream_index, int64_t min_ts, int
 {
     if(min_ts > ts || max_ts < ts)
         return -1;
+    if (stream_index < -1 || stream_index >= (int)s->nb_streams)
+        return AVERROR(EINVAL);
 
     if(s->seek2any>0)
         flags |= AVSEEK_FLAG_ANY;
@@ -2697,7 +2735,8 @@ int av_find_stream_info(AVFormatContext *ic)
 
 int avformat_find_stream_info(AVFormatContext *ic, AVDictionary **options)
 {
-    int i, count, ret, read_size, j;
+    int i, count, ret, j;
+    int64_t read_size;
     AVStream *st;
     AVPacket pkt1, *pkt;
     int64_t old_offset = avio_tell(ic->pb);
@@ -3624,13 +3663,6 @@ void av_dump_format(AVFormatContext *ic,
 
     av_free(printed);
 }
-
-#if FF_API_AV_GETTIME && CONFIG_SHARED && HAVE_SYMVER
-FF_SYMVER(int64_t, av_gettime, (void), "LIBAVFORMAT_54")
-{
-    return av_gettime();
-}
-#endif
 
 uint64_t ff_ntp_time(void)
 {

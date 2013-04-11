@@ -20,7 +20,7 @@
 
 #include "atomic.h"
 
-#if !HAVE_MEMORYBARRIER && !HAVE_SYNC_SYNCHRONIZE && !HAVE_MACHINE_RW_BARRIER
+#if !HAVE_MEMORYBARRIER && !HAVE_SYNC_VAL_COMPARE_AND_SWAP && !HAVE_MACHINE_RW_BARRIER
 
 #if HAVE_PTHREADS
 
@@ -102,10 +102,10 @@ void *avpriv_atomic_ptr_cas(void * volatile *ptr, void *oldval, void *newval)
 
 #endif /* HAVE_PTHREADS */
 
-#endif /* !HAVE_MEMORYBARRIER && !HAVE_SYNC_SYNCHRONIZE && !HAVE_MACHINE_RW_BARRIER */
+#endif /* !HAVE_MEMORYBARRIER && !HAVE_SYNC_VAL_COMPARE_AND_SWAP && !HAVE_MACHINE_RW_BARRIER */
 
 #ifdef TEST
-#include <assert.h>
+#include "avassert.h"
 
 int main(void)
 {
@@ -113,10 +113,10 @@ int main(void)
     int res;
 
     res = avpriv_atomic_int_add_and_fetch(&val, 1);
-    assert(res == 2);
+    av_assert0(res == 2);
     avpriv_atomic_int_set(&val, 3);
     res = avpriv_atomic_int_get(&val);
-    assert(res == 3);
+    av_assert0(res == 3);
 
     return 0;
 }

@@ -167,6 +167,8 @@ Complex filtergraphs are configured with the @option{-filter_complex} option.
 Note that this option is global, since a complex filtergraph by its nature
 cannot be unambiguously associated with a single stream or file.
 
+The @option{-lavfi} option is equivalent to @option{-filter_complex}.
+
 A trivial example of a complex filtergraph is the @code{overlay} filter, which
 has two video inputs and one video output, containing one video overlaid on top
 of the other. Its audio counterpart is the @code{amix} filter.
@@ -361,7 +363,8 @@ want to create filter graphs with multiple inputs and/or outputs.
 Specify the preset for matching stream(s).
 
 @item -stats (@emph{global})
-Print encoding progress/statistics. On by default.
+Print encoding progress/statistics. It is on by default, to explicitly
+disable it you need to specify @code{-nostats}.
 
 @item -progress @var{url} (@emph{global})
 Send program-friendly progress information to @var{url}.
@@ -680,6 +683,9 @@ Note that this option will delay the output of all data until the next
 subtitle packet is decoded: it may increase memory consumption and latency a
 lot.
 
+@item -canvas_size @var{size}
+Set the size of the canvas used to render subtitles.
+
 @end table
 
 @section Advanced options
@@ -896,6 +902,10 @@ Chooses between 1 and 2 depending on muxer capabilities. This is the
 default method.
 @end table
 
+Note that the timestamps may be further modified by the muxer, after this.
+For example, in the case that the format option @option{avoid_negative_ts}
+is enabled.
+
 With -map you can select from which stream the timestamps should be
 taken. You can leave either video or audio unchanged and sync the
 remaining stream(s) to the unchanged one.
@@ -905,6 +915,11 @@ Audio sync method. "Stretches/squeezes" the audio stream to match the timestamps
 the parameter is the maximum samples per second by which the audio is changed.
 -async 1 is a special case where only the start of the audio stream is corrected
 without any later correction.
+
+Note that the timestamps may be further modified by the muxer, after this.
+For example, in the case that the format option @option{avoid_negative_ts}
+is enabled.
+
 This option has been deprecated. Use the @code{aresample} audio filter instead.
 
 @item -copyts
@@ -913,7 +928,8 @@ to sanitize them. In particular, do not remove the initial start time
 offset value.
 
 Note that, depending on the @option{vsync} option or on specific muxer
-processing, the output timestamps may mismatch with the input
+processing (e.g. in case the format option @option{avoid_negative_ts}
+is enabled) the output timestamps may mismatch with the input
 timestamps even when this option is selected.
 
 @item -copytb @var{mode}
@@ -1028,6 +1044,11 @@ To generate 5 seconds of pure red video using lavfi @code{color} source:
 @example
 ffmpeg -filter_complex 'color=c=red' -t 5 out.mkv
 @end example
+
+@item -lavfi @var{filtergraph} (@emph{global})
+Define a complex filter graph, i.e. one with arbitrary number of inputs and/or
+outputs. Equivalent to @option{-filter_complex}.
+
 @end table
 
 As a special exception, you can use a bitmap subtitle stream as input: it

@@ -169,6 +169,8 @@ typedef struct OptionsContext {
     int        nb_reinit_filters;
     SpecifierOpt *fix_sub_duration;
     int        nb_fix_sub_duration;
+    SpecifierOpt *canvas_sizes;
+    int        nb_canvas_sizes;
     SpecifierOpt *pass;
     int        nb_pass;
     SpecifierOpt *passlogfiles;
@@ -214,6 +216,7 @@ typedef struct InputStream {
     int decoding_needed;     /* true if the packets must be decoded in 'raw_fifo' */
     AVCodec *dec;
     AVFrame *decoded_frame;
+    AVFrame *filter_frame; /* a ref of decoded_frame, to be sent to filters */
 
     int64_t       start;     /* time when read started */
     /* predicted dts of the next packet read for this stream or (when there are
@@ -255,12 +258,10 @@ typedef struct InputStream {
     struct sub2video {
         int64_t last_pts;
         int64_t end_pts;
-        AVFilterBufferRef *ref;
+        AVFrame *frame;
         int w, h;
     } sub2video;
 
-    /* a pool of free buffers for decoded data */
-    FrameBuffer *buffer_pool;
     int dr1;
 
     /* decoded data from this stream goes into all those filters

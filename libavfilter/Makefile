@@ -33,13 +33,13 @@ OBJS = allfilters.o                                                     \
        avfilter.o                                                       \
        avfiltergraph.o                                                  \
        buffer.o                                                         \
+       buffersink.o                                                     \
        buffersrc.o                                                      \
        drawutils.o                                                      \
        fifo.o                                                           \
        formats.o                                                        \
        graphdump.o                                                      \
        graphparser.o                                                    \
-       sink_buffer.o                                                    \
        transform.o                                                      \
        video.o                                                          \
 
@@ -56,6 +56,7 @@ OBJS-$(CONFIG_AMERGE_FILTER)                 += af_amerge.o
 OBJS-$(CONFIG_AMIX_FILTER)                   += af_amix.o
 OBJS-$(CONFIG_ANULL_FILTER)                  += af_anull.o
 OBJS-$(CONFIG_APAD_FILTER)                   += af_apad.o
+OBJS-$(CONFIG_APERMS_FILTER)                 += f_perms.o
 OBJS-$(CONFIG_ARESAMPLE_FILTER)              += af_aresample.o
 OBJS-$(CONFIG_ASELECT_FILTER)                += f_select.o
 OBJS-$(CONFIG_ASENDCMD_FILTER)               += f_sendcmd.o
@@ -89,6 +90,7 @@ OBJS-$(CONFIG_VOLUMEDETECT_FILTER)           += af_volumedetect.o
 OBJS-$(CONFIG_AEVALSRC_FILTER)               += asrc_aevalsrc.o
 OBJS-$(CONFIG_ANULLSRC_FILTER)               += asrc_anullsrc.o
 OBJS-$(CONFIG_FLITE_FILTER)                  += asrc_flite.o
+OBJS-$(CONFIG_SINE_FILTER)                   += asrc_sine.o
 
 OBJS-$(CONFIG_ANULLSINK_FILTER)              += asink_anullsink.o
 
@@ -140,6 +142,7 @@ OBJS-$(CONFIG_NULL_FILTER)                   += vf_null.o
 OBJS-$(CONFIG_OCV_FILTER)                    += vf_libopencv.o
 OBJS-$(CONFIG_OVERLAY_FILTER)                += vf_overlay.o
 OBJS-$(CONFIG_PAD_FILTER)                    += vf_pad.o
+OBJS-$(CONFIG_PERMS_FILTER)                  += f_perms.o
 OBJS-$(CONFIG_PIXDESCTEST_FILTER)            += vf_pixdesctest.o
 OBJS-$(CONFIG_PP_FILTER)                     += vf_pp.o
 OBJS-$(CONFIG_REMOVELOGO_FILTER)             += bbox.o lswsutils.o lavfutils.o vf_removelogo.o
@@ -190,7 +193,6 @@ OBJS-$(CONFIG_MP_FILTER) += libmpcodecs/vf_eq.o
 OBJS-$(CONFIG_MP_FILTER) += libmpcodecs/vf_fil.o
 #OBJS-$(CONFIG_MP_FILTER) += libmpcodecs/vf_filmdint.o
 OBJS-$(CONFIG_MP_FILTER) += libmpcodecs/vf_fspp.o
-OBJS-$(CONFIG_MP_FILTER) += libmpcodecs/vf_harddup.o
 OBJS-$(CONFIG_MP_FILTER) += libmpcodecs/vf_ilpack.o
 OBJS-$(CONFIG_MP_FILTER) += libmpcodecs/vf_ivtc.o
 OBJS-$(CONFIG_MP_FILTER) += libmpcodecs/vf_mcdeint.o
