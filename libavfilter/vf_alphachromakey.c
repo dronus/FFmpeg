@@ -47,6 +47,7 @@ typedef struct {
     struct FFBufQueue queue_main;
     int u, v, min, max;
     char* alpha_expr;
+    int print_uv;
 } AlphaChromakeyContext;
 
 static const char *const var_names[] = {
@@ -61,11 +62,12 @@ static const AVOption alphachromakey_options[] = {
     {"min", "set the minimal tolerance the keying sets in"  , offsetof(AlphaChromakeyContext,min       ), AV_OPT_TYPE_INT   , {.i64=0}     , 0, 255, FLAGS },
     {"max", "set the maximal tolerance the keying completes", offsetof(AlphaChromakeyContext,max       ), AV_OPT_TYPE_INT   , {.i64=0}     , 0, 255, FLAGS },
     {"alpha", "set alpha expression"                        , offsetof(AlphaChromakeyContext,alpha_expr), AV_OPT_TYPE_STRING, {.str = NULL}, 0,   0, FLAGS },
+    {"print_uv", "set the maximal tolerance the keying completes", offsetof(AlphaChromakeyContext,print_uv       ), AV_OPT_TYPE_INT   , {.i64=0}     , 0, 255, FLAGS },
     {NULL},
 };
 AVFILTER_DEFINE_CLASS(alphachromakey);
 
-static const char *shorthand[] = { "u", "v", "min","max","alpha", NULL };
+static const char *shorthand[] = { "u", "v", "min","max","alpha", "print_uv", NULL };
 
 static av_cold int init(AVFilterContext *ctx, const char *args)
 {
@@ -169,11 +171,13 @@ static void draw_frame(AVFilterContext *ctx,
             r*=alpha;
             pout[x]=(int)(r*255);
             
-            sum_u+=in_u[x/2]; 
-            sum_v+=in_v[x/2];
+            if(keyer->print_uv){
+                sum_u+=in_u[x/2]; 
+                sum_v+=in_v[x/2];
+            }
             count++;
         }
-        printf("chromakey mean u:%ld v:%ld\n",sum_u/count, sum_v/count);
+        if(keyer->print_uv) printf("chromakey mean u:%ld v:%ld\n",sum_u/count, sum_v/count);
     }
 }
 
