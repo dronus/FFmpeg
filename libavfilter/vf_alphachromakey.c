@@ -123,8 +123,8 @@ static void draw_frame(AVFilterContext *ctx,
     FILE* file=fopen("alphachromakey.params","r");
     if(file)
     {
-        char buffer[255];
-        fgets(buffer,255,file);
+        char buffer[1024];
+        fgets(buffer,1024,file);
         av_opt_set_from_string(keyer, buffer, shorthand, "=", ":");
         fclose(file);
     }
