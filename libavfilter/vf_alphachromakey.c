@@ -126,8 +126,8 @@ static void draw_frame(AVFilterContext *ctx,
     FILE* file=fopen("alphachromakey.params","r");
     if(file)
     {
-        char buffer[255];
-        fgets(buffer,255,file);
+        char buffer[1024];
+        fgets(buffer,1024,file);
         av_opt_set_from_string(keyer, buffer, shorthand, "=", ":");
         fclose(file);
     }
@@ -148,11 +148,16 @@ static void draw_frame(AVFilterContext *ctx,
             return AVERROR(EINVAL);
         }
     }
+    
+    int32_t alpha32=(int32_t)(alpha*256);
 
     // do the keying
     int h = main_buf->height;
     int x, y;
     long sum_u=0, sum_v=0, count=0;
+
+    int32_t tola2=keyer->min*(int32_t)keyer->min;
+    int32_t tolb2=keyer->max*(int32_t)keyer->max;
     for(y = 0; y < h; y++)  
     {
         int yfact = (main_buf->format==AV_PIX_FMT_YUVA422P ? y : y/2);
@@ -161,15 +166,15 @@ static void draw_frame(AVFilterContext *ctx,
         uint8_t* pout  = main_buf->data[A] + y * main_buf->linesize[A];
         for (int x = 0; x < main_buf->linesize[A]; x++) {
             // radius threshold with feather, double precision
-            double du=in_u[x/2]/256.0 - keyer->u/256.0, dv=in_v[x/2]/256.0 - keyer->v/256.0;
-            double r=sqrt(du*du+dv*dv);
-            double tola=keyer->min/256.0;
-            double tolb=keyer->max/256.0;
-            if (r<tola)      r=0;
-            else if (r<tolb) r=(r-tola)/(tolb-tola);
-            else             r=1;
-            r*=alpha;
-            pout[x]=(int)(r*255);
+            int32_t du=in_u[x/2] - (int32_t)(keyer->u);
+            int32_t dv=in_v[x/2] - (int32_t)(keyer->v);
+            int32_t r2=du*du+dv*dv;
+            
+            if      (r2<tola2) r2=0;
+            else if (r2<tolb2) r2=(r2-tola2)*255/(tolb2-tola2);
+            else               r2=255;
+
+            pout[x]=r2*alpha32/256;
             
             if(keyer->print_uv){
                 sum_u+=in_u[x/2]; 
