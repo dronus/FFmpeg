@@ -77,7 +77,6 @@ static int sdl_write_header(AVFormatContext *s)
     AVCodecContext *encctx = st->codec;
     AVRational sar, dar; /* sample and display aspect ratios */
     int i, ret;
-    int flags = SDL_SWSURFACE | sdl->window_fullscreen ? SDL_FULLSCREEN : 0;
 
     if (!sdl->window_title)
         sdl->window_title = av_strdup(s->filename);
