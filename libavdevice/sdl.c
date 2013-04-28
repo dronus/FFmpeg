@@ -151,6 +151,8 @@ static int sdl_write_header(AVFormatContext *s)
     sdl->overlay_y = (sdl->window_height - sdl->overlay_height) / 2;
 
     SDL_WM_SetCaption(sdl->window_title, sdl->icon_title);
+   
+    int flags=SDL_SWSURFACE | sdl->window_fullscreen ? SDL_FULLSCREEN : 0;
     sdl->surface = SDL_SetVideoMode(sdl->window_width, sdl->window_height,
                                     0, flags);
     if (!sdl->surface) {
@@ -169,17 +171,16 @@ static int sdl_write_header(AVFormatContext *s)
         goto fail;
     }
 
-  printf("Created %dx%dx%d %s %s overlay\n",sdl->overlay->w,sdl->overlay->h,sdl->overlay->planes,
-           sdl->overlay->hw_overlay?"hardware":"software",
-           sdl->overlay->format==SDL_YV12_OVERLAY?"YV12":
-           sdl->overlay->format==SDL_IYUV_OVERLAY?"IYUV":
-           sdl->overlay->format==SDL_YUY2_OVERLAY?"YUY2":
-           sdl->overlay->format==SDL_UYVY_OVERLAY?"UYVY":
-           sdl->overlay->format==SDL_YVYU_OVERLAY?"YVYU":
-           "Unknown");
+    printf("Created %dx%dx%d %s %s overlay\n",sdl->overlay->w,sdl->overlay->h,sdl->overlay->planes,
+        sdl->overlay->hw_overlay?"hardware":"software",
+        sdl->overlay->format==SDL_YV12_OVERLAY?"YV12":
+        sdl->overlay->format==SDL_IYUV_OVERLAY?"IYUV":
+        sdl->overlay->format==SDL_YUY2_OVERLAY?"YUY2":
+        sdl->overlay->format==SDL_UYVY_OVERLAY?"UYVY":
+        sdl->overlay->format==SDL_YVYU_OVERLAY?"YVYU":
+        "Unknown");
 
     SDL_ShowCursor(0);
-
 
     av_log(s, AV_LOG_VERBOSE, "w:%d h:%d fmt:%s sar:%d/%d -> w:%d h:%d\n",
            encctx->width, encctx->height, av_get_pix_fmt_name(encctx->pix_fmt), sar.num, sar.den,
