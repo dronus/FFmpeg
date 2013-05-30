@@ -153,8 +153,9 @@ static void draw_frame(AVFilterContext *ctx,
 
     // do the keying
     int h = main_buf->height;
+    int w = main_buf->linesize[A];
     int x, y;
-    long sum_u=0, sum_v=0, count=0;
+    long sum_u=0, sum_v=0, count=1;
 
     int32_t tola2=keyer->min*(int32_t)keyer->min;
     int32_t tolb2=keyer->max*(int32_t)keyer->max;
@@ -164,26 +165,25 @@ static void draw_frame(AVFilterContext *ctx,
         uint8_t* in_u  = main_buf->data[U] + yfact  * main_buf->linesize[U];
         uint8_t* in_v  = main_buf->data[V] + yfact  * main_buf->linesize[V];
         uint8_t* pout  = main_buf->data[A] + y * main_buf->linesize[A];
-        for (int x = 0; x < main_buf->linesize[A]; x++) {
+        for (int x = 0; x < w; x++) {
             // radius threshold with feather, double precision
             int32_t du=in_u[x/2] - (int32_t)(keyer->u);
             int32_t dv=in_v[x/2] - (int32_t)(keyer->v);
             int32_t r2=du*du+dv*dv;
-            
+
             if      (r2<tola2) r2=0;
             else if (r2<tolb2) r2=(r2-tola2)*255/(tolb2-tola2);
             else               r2=255;
 
             pout[x]=r2*alpha32/256;
-            
-            if(keyer->print_uv){
-                sum_u+=in_u[x/2]; 
+            if(keyer->print_uv && w/2-x>-100 && w/2-x <100 && h/2-y>-100 && h/2-y<100){
+                sum_u+=in_u[x/2];
                 sum_v+=in_v[x/2];
+		count++;
             }
-            count++;
         }
-        if(keyer->print_uv) printf("chromakey mean u:%ld v:%ld\n",sum_u/count, sum_v/count);
     }
+    if(keyer->print_uv) printf("chromakey mean u:%ld v:%ld\n",sum_u/count, sum_v/count);
 }
 
 static int filter_frame(AVFilterLink *inlink, AVFrame *buf)

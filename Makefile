@@ -175,7 +175,7 @@ coverage-html: coverage.info
 
 check: all alltools examples testprogs fate
 
-include $(SRC_PATH)/doc/Makefile
+#include $(SRC_PATH)/doc/Makefile
 include $(SRC_PATH)/tests/Makefile
 
 $(sort $(OBJDIRS)):
